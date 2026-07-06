@@ -1,20 +1,38 @@
 name: Build APK
 on: [push]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.0'
-      - run: flutter create --platforms=android
-      - run: flutter pub get
-      - run: flutter build apk --release
+          channel: 'stable'
+          cache: true
+
+      - name: Check flutter
+        run: flutter doctor -v
+
+      - name: Create android folder if missing
+        run: |
+          if [! -d "android" ]; then
+            flutter create --platforms=android.
+          fi
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release --verbose
+
       - uses: actions/upload-artifact@v4
         with:
           name: RSLPL-Challan-APK
