@@ -1,39 +1,45 @@
 name: Build APK
-on: [push]
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
           channel: 'stable'
+          flutter-version: '3.22.0'
           cache: true
 
-      - name: Check flutter
+      - name: Doctor
         run: flutter doctor -v
 
-      - name: Create android folder if missing
+      - name: Clean and Get packages
         run: |
-          if [! -d "android" ]; then
-            flutter create --platforms=android.
-          fi
+          flutter clean
+          flutter pub get
 
-      - name: Get packages
-        run: flutter pub get
+      - name: Fix gradlew permission
+        run: chmod +x android/gradlew || echo "no gradlew found"
 
-      - name: Build APK
+      - name: Build APK Release
         run: flutter build apk --release --verbose
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: RSLPL-Challan-APK
           path: build/app/outputs/flutter-apk/app-release.apk
