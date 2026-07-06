@@ -149,50 +149,63 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
-  Future<void> _scan() async {
-    if (_processing) return;
-    setState(() => _processing = true);
-    try {
-      final file = await _controller.takePicture();
-      final inputImage = InputImage.fromFilePath(file.path);
-      final recognizer =
-          TextRecognizer(script: TextRecognitionScript.latin);
-      final result = await recognizer.processImage(inputImage);
-      await recognizer.close();
-      String text = result.text.toUpperCase();
-      String vehicle =
-          RegExp(r'[A-Z]{2}\d{1,2}[A-Z]{1,2}\d{3,4}').firstMatch(text)?.group(0)??
-              "OD34W8460";
-      String ticket =
-          RegExp(r'WB\d{4,6}').firstMatch(text)?.group(0)?? "WB07025";
-      String gross =
-          RegExp(r'GROSS[^\d]*(\d{4,6})').firstMatch(text)?.group(1)?? "45670";
-      String tare =
-          RegExp(r'TARE[^\d]*(\d{4,6})').firstMatch(text)?.group(1)?? "14010";
-      String net =
-          RegExp(r'NET[^\d]*(\d{4,6})').firstMatch(text)?.group(1)?? "31660";
-      String material = text.contains("BOULDER")? "BOULDER" : "STONE";
-      if (!mounted) return;
-      Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-              builder: (_) => ResultScreen(
-                  vehicle: vehicle,
-                  ticket: ticket,
-                  gross: gross,
-                  tare: tare,
-                  net: net,
-                  material: material,
-                  imagePath: file.path)));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-           .showSnackBar(SnackBar(content: Text('Error: $e')));
+  Future<void> _saveToExcel(BuildContext context) async {
+  try {
+    await Permission.storage.request();
+    await Permission.manageExternalStorage.request();
+
+    var excel = Excel.createExcel();
+    var sheet = excel['Sheet1']!;
+
+    String todayDate = DateFormat('dd-MM-yyyy').format(DateTime.now());
+    String todayTime = DateFormat('hh:mm a').format(DateTime.now());
+    String fileName = "RSLPL_Report_$todayDate.xlsx";
+
+    // Header + Date column add
+    sheet.appendRow([
+      TextCellValue('Vehicle No'), TextCellValue('Ticket No'),
+      TextCellValue('Gross'), TextCellValue('Tare'),
+      TextCellValue('Net'), TextCellValue('Material'),
+      TextCellValue('Date'), TextCellValue('Time')
+    ]);
+
+    sheet.appendRow([
+      TextCellValue(vehicleNo), TextCellValue(ticketNo),
+      TextCellValue(grossWeight), TextCellValue(tareWeight),
+      TextCellValue(netWeight), TextCellValue(itemName),
+      TextCellValue(todayDate), TextCellValue(todayTime),
+    ]);
+
+    // 1. Sothik Download path ber kor
+    Directory? dlDir = await getDownloadsDirectory();
+    String savePath = "";
+    if (dlDir != null) {
+      savePath = "${dlDir.path}/$fileName";
+    } else {
+      Directory fallback = Directory('/storage/emulated/0/Download');
+      if (!await fallback.exists()) {
+        fallback = await getApplicationDocumentsDirectory();
       }
-    } finally {
-      if (mounted) setState(() => _processing = false);
+      savePath = "${fallback.path}/$fileName";
+    }
+
+    File file = File(savePath);
+    await file.writeAsBytes(excel.encode()!);
+
+    // 2. Client ke ar khujte hobe na - direct open/share
+    await Share.shareXFiles([XFile(savePath)], text: 'RSLPL Challan Report - $todayDate $todayTime');
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ Saved! $fileName | Date: $todayDate'), duration: Duration(seconds: 4)),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {
