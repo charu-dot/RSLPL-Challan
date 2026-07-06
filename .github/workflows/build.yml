@@ -19,5 +19,5 @@ jobs:
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
-          name: RSLPL-Challan-APK
+          name: rslpl_challan-APK
           path: build/app/outputs/flutter-apk/app-release.apk
