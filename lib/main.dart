@@ -120,7 +120,7 @@ class _CameraScreenState extends State<CameraScreen> {
       DateFormat('dd-MM-yyyy').format(DateTime.now()),
       DateFormat('hh:mm a').format(DateTime.now()),
     ]);
-
+    
     var status = await Permission.storage.request();
     if (status.isGranted) {
       Directory? dir = await getExternalStorageDirectory();
