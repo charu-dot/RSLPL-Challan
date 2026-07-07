@@ -1,4 +1,4 @@
-name: Build RSLPL APK
+name: Build RSLPL AAB for Play Store
 on:
   push:
     branches: [ main ]
@@ -8,10 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+          
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.2'
@@ -35,24 +37,20 @@ jobs:
                   </activity>
                   <meta-data android:name="flutterEmbedding" android:value="2" />
               </application>
-              <queries>
-                  <intent><action android:name="android.intent.action.PICK" /><data android:mimeType="image/*" /></intent>
-                  <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
-              </queries>
           </manifest>
           EOF
 
-      # Ei step tai asol. Ebar 2to fix ek sathe. 1. Version 1.8.10 fixed 2. jdk8 ta baad
-      - name: Nuclear Fix for Kotlin Duplicate Class
+      - name: Fix Kotlin Duplicate Class
         run: |
           sed -i '/android {/a \    configurations.all {\n        resolutionStrategy {\n            force "org.jetbrains.kotlin:kotlin-stdlib:1.8.10"\n        }\n        exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk8"\n    }' android/app/build.gradle
           sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.8.10"/' android/build.gradle
 
       - run: flutter pub get
-      - run: flutter build apk --release
+      
+      - run: flutter build appbundle --release
 
-      - name: Upload APK
+      - name: Upload AAB to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RSLPL-Challan-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: RSLPL-Challan-AAB-PlayStore
+          path: build/app/outputs/bundle/release/app-release.aab
