@@ -21,9 +21,14 @@ jobs:
 
       - run: flutter create --project-name rslpl_challan --platforms=android .
 
-      - name: Add Dependencies to pubspec.yaml
+      - name: Add Dependencies
         run: |
-          sed -i '/dependencies:/a \  camera: ^0.10.5+9\n  excel: ^2.1.0\n  path_provider: ^2.1.2\n  permission_handler: ^11.3.1\n  intl: ^0.19.0\n  share_plus: ^9.0.0' pubspec.yaml
+          flutter pub add camera:0.10.5+9
+          flutter pub add excel:2.1.0
+          flutter pub add path_provider:2.1.2
+          flutter pub add permission_handler:11.3.1
+          flutter pub add intl:0.19.0
+          flutter pub add share_plus:9.0.0
 
       - name: Add Custom AndroidManifest
         run: |
