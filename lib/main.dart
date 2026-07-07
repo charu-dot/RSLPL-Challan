@@ -129,61 +129,44 @@ class _CameraScreenState extends State<CameraScreen> {
     };
   }
 
-  // EI FUNCTION TA PROTTEK TA CHALLAN THEKE DATA KHUJE BAR KORBE
-  String _getValue(String fullText, String key) {
-    try {
-      for (String line in fullText.split('\n')) {
-        if (line.toLowerCase().contains(key.toLowerCase())) {
-          // "Vehicle No : OD34W8460" theke "OD34W8460" kete nebe
-          String value = line.split(':').last.trim();
+  // // ==== EI FUNCTION TA REPLACE KOR. 100% CHOLBE ====
+Future<Map<String, String>> _extractTextFromImage(String path) async {
+  final inputImage = InputImage.fromFilePath(path);
+  final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+  await textRecognizer.close();
 
-          // Sudhu number lagle
-          if (key.contains('Weight')) {
-            value = value.replaceAll(RegExp(r'[^0-9]'), '');
-          }
-          // Date format thik kora
-          if (key.contains('Date')) {
-            value = value.split(' ').first.replaceAll('/', '-');
-          }
+  String fullText = recognizedText.text;
+  debugPrint("OCR TEXT: $fullText");
 
-          return value.isEmpty? 'N/A' : value;
-        }
-      }
-    } catch (e) {
-      debugPrint("Error parsing $key: $e");
-    }
-    return 'N/A';
+  // ==== PURONO RETURN TA DELETE KORE ETA PASTE KOR ====
+  return {
+    'vehicle': _getValue(fullText, 'Vehicle No'),
+    'ticket': _getValue(fullText, 'Ticket No'),
+    'gross': _getValue(fullText, 'Gross Weight'),
+    'tare': _getValue(fullText, 'Tare Weight'),
+    'net': _getValue(fullText, 'Net Weight'),
+    'material': _getValue(fullText, 'Item Name'), // Eta 'Item Name/Type' chhilo, ekhon 'Item Name'
+    'date': _getValue(fullText, 'Ticket Date'),
+    'time': _getValue(fullText, 'Time'),
+  };
+  // ==== PASTE SESH ====
+}
+
+// Value ta clean korar jonno helper
+String _cleanValue(String value, String key) {
+  value = value.replaceAll('KGS', '').replaceAll('KG', '').trim();
+  // Sudhu number lagle
+  if (key.contains('Weight')) {
+    value = value.replaceAll(RegExp(r'[^0-9]'), '');
   }
-  // ==== OCR SESH ====
-
-  Future<String?> _createExcel(Map<String, String> d) async {
-    try {
-      var excel = Excel.createExcel();
-      Sheet s = excel['Challan'];
-      s.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
-
-      // Jodi challan e date/time na thake, tahole aajker ta nebe
-      String finalDate = d['date']!= 'N/A' && d['date']!.isNotEmpty? d['date']! : DateFormat('dd-MM-yyyy').format(DateTime.now());
-      String finalTime = d['time']!= 'N/A' && d['time']!.isNotEmpty? d['time']! : DateFormat('hh:mm a').format(DateTime.now());
-
-      s.appendRow([
-        d['vehicle'], d['ticket'], d['gross'], d['tare'], d['net'], d['material'],
-        finalDate, finalTime,
-      ]);
-
-      var dir = await getApplicationDocumentsDirectory();
-      var fileName = "RSLPL_${d['ticket']}_${DateTime.now().millisecondsSinceEpoch}.xlsx";
-      var file = File("${dir.path}/$fileName");
-      var bytes = excel.save();
-      if (bytes!= null) {
-        await file.writeAsBytes(bytes);
-        return file.path;
-      }
-    } catch (e) {
-      debugPrint("Excel Error: $e");
-    }
-    return null;
+  // Date format
+  if (key.contains('Date')) {
+    value = value.split(' ').first.replaceAll('/', '-');
   }
+  return value.isEmpty? 'N/A' : value;
+}
+// ==== FIX SESH ====
 
   @override
   Widget build(BuildContext context) {
