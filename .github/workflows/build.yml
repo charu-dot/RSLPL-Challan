@@ -21,12 +21,17 @@ jobs:
 
       - run: flutter create --project-name rslpl_challan --platforms=android .
 
+      - name: Add Dependencies to pubspec.yaml
+        run: |
+          sed -i '/dependencies:/a \  camera: ^0.10.5+9\n  excel: ^2.1.0\n  path_provider: ^2.1.2\n  permission_handler: ^11.3.1\n  intl: ^0.19.0\n  share_plus: ^9.0.0' pubspec.yaml
+
       - name: Add Custom AndroidManifest
         run: |
           cat > android/app/src/main/AndroidManifest.xml << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.CAMERA" />
-              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
               <application android:label="RSLPL Challan OCR" android:name="${applicationName}" android:icon="@mipmap/ic_launcher">
                   <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/LaunchTheme" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">
                       <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
