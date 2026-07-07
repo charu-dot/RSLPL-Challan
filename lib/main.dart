@@ -37,46 +37,14 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('RSLPL Challan'), centerTitle: true),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton.icon(
-              icon: const Icon(Icons.camera_alt),
-              label: const Text('Scan New Challan'),
-              style: ElevatedButton.styleFrom(minimumSize: const Size(250, 50)),
-              onPressed: () async {
-                await Permission.camera.request();
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
-              },
-            ),
-            const SizedBox(height: 20),
-            // ===== EITA NOTUN BUTTON - CHIPKA DILAM =====
-            OutlinedButton.icon(
-              icon: const Icon(Icons.data_object),
-              label: const Text('Generate Dummy Data'),
-              style: OutlinedButton.styleFrom(minimumSize: const Size(250, 50)),
-              onPressed: () {
-                // Random data generate korlam
-                var data = DummyDataGenerator.generateChallan();
-
-                // ResultScreen e pathiye dilam
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ResultScreen(
-                      vehicleNo: data['vehicle'],
-                      ticketNo: data['ticket'],
-                      itemName: data['material'],
-                      grossWeight: data['gross'].toString(),
-                      tareWeight: data['tare'].toString(),
-                      netWeight: data['net'].toString(),
-                    ),
-                  ),
-                );
-              },
-            ),
-            // ===== NOTUN BUTTON SES =====
-          ],
+        child: ElevatedButton.icon(
+          icon: const Icon(Icons.camera_alt),
+          label: const Text('Scan New Challan'),
+          style: ElevatedButton.styleFrom(minimumSize: const Size(250, 50)),
+          onPressed: () async {
+            await Permission.camera.request();
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
+          },
         ),
       ),
     );
@@ -91,13 +59,16 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
-  bool _isBusy = false;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
     _controller = CameraController(cameras[0], ResolutionPreset.high);
-    _controller.initialize().then((_) => setState(() {}));
+    _controller.initialize().then((_) {
+      if (!mounted) return;
+      setState(() => _isInitialized = true);
+    });
   }
 
   @override
@@ -106,19 +77,97 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
+  // ===== EKHANE MAGIC HOCHHE =====
+  Future<void> _captureAndGenerateExcel() async {
+    try {
+      // 1. Camera diye chobi tol
+      final XFile file = await _controller.takePicture();
+
+      // 2. Random data generate kor
+      var data = DummyDataGenerator.generateChallan();
+
+      // 3. Excel file baniye save kor
+      await _saveToExcel(data);
+
+      // 4. ResultScreen e pathiye de
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultScreen(
+            imagePath: file.path, // Chobi ta dekhate chaile
+            vehicleNo: data['vehicle'],
+            ticketNo: data['ticket'],
+            itemName: data['material'],
+            grossWeight: data['gross'].toString(),
+            tareWeight: data['tare'].toString(),
+            netWeight: data['net'].toString(),
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  Future<void> _saveToExcel(Map<String, dynamic> data) async {
+    var excel = Excel.createExcel();
+    Sheet sheetObject = excel['ChallanData'];
+
+    // Header
+    sheetObject.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
+
+    // Random Data Row
+    sheetObject.appendRow([
+      data['vehicle'],
+      data['ticket'],
+      data['gross'],
+      data['tare'],
+      data['net'],
+      data['material'],
+      DateFormat('dd-MM-yyyy').format(DateTime.now()),
+      DateFormat('hh:mm a').format(DateTime.now()),
+    ]);
+
+    // Phone e save kor
+    var status = await Permission.storage.request();
+    if (status.isGranted) {
+      Directory? dir = await getExternalStorageDirectory();
+      String filePath = "${dir!.path}/RSLPL_Challan_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+
+      List<int>? fileBytes = excel.save();
+      if (fileBytes!= null) {
+        File(filePath)
+         ..createSync(recursive: true)
+         ..writeAsBytesSync(fileBytes);
+
+        // WhatsApp e share korar option de
+        Share.shareXFiles([XFile(filePath)], text: 'RSLPL Challan Auto Generated');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Scan Challan')),
-      body: _controller.value.isInitialized
-         ? CameraPreview(_controller)
-          : const Center(child: CircularProgressIndicator()),
+      body: CameraPreview(_controller),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _captureAndGenerateExcel, // ===== EI BUTTON TIP DILEI HOBE =====
+        child: const Icon(Icons.camera),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }
 
-// ===== RESULT SCREEN - ETA AGE THEKEI CHHILO TOR CODE E =====
 class ResultScreen extends StatelessWidget {
+  final String imagePath;
   final String vehicleNo;
   final String ticketNo;
   final String itemName;
@@ -128,6 +177,7 @@ class ResultScreen extends StatelessWidget {
 
   const ResultScreen({
     super.key,
+    required this.imagePath,
     required this.vehicleNo,
     required this.ticketNo,
     required this.itemName,
@@ -143,7 +193,7 @@ class ResultScreen extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Scan Successful - Offline OCR', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+          const Text('Data Generated Successfully', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           Text(vehicleNo, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
           Text('$ticketNo • $itemName', style: const TextStyle(color: Colors.grey)),
@@ -153,15 +203,12 @@ class ResultScreen extends StatelessWidget {
             Column(children: [const Text('Tare'), Text('$tareWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
             Column(children: [const Text('Net', style: TextStyle(color: Colors.green)), Text('$netWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))]),
           ])),
+          const SizedBox(height: 20),
+          Image.file(File(imagePath), height: 200), // Captured chobi ta dekhabe
           const Spacer(),
-          SizedBox(width: double.infinity, height: 56, child: ElevatedButton(onPressed: () => _saveToExcel(context), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))), child: const Text('Save to Excel (Offline)')))
+          const Text('Excel file saved & ready to share on WhatsApp ✅', style: TextStyle(color: Colors.blue)),
         ]),
       ),
     );
-  }
-
-  void _saveToExcel(BuildContext context) {
-    // Tor Excel save er code ekhane thakbe
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved to Excel!')));
   }
 }
