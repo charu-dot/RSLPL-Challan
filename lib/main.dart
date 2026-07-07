@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image/image.dart' as img; // Rotate er jonno
 
 late List<CameraDescription> cameras;
 
@@ -108,6 +109,16 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<Map<String, String>> _extractTextFromImage(String path) async {
+    // ==== ROTATE FIX: Photo soja kore nebe ====
+    final File imageFile = File(path);
+    final originalImage = img.decodeImage(await imageFile.readAsBytes());
+    if (originalImage!.height > originalImage.width) {
+      // Photo portrait mode e tola hole 90 degree ghorabo
+      final rotatedImage = img.copyRotate(originalImage, angle: 90);
+      await imageFile.writeAsBytes(img.encodeJpg(rotatedImage));
+    }
+    // ==== ROTATE FIX SESH ====
+
     final inputImage = InputImage.fromFilePath(path);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
     final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
@@ -128,15 +139,18 @@ class _CameraScreenState extends State<CameraScreen> {
     };
   }
 
+  // ==== N/A FIX: Key-Value same line ba porer line e thakleo cholbe ====
   String _getValue(String fullText, String key) {
     List<String> lines = fullText.split('\n');
     for (int i = 0; i < lines.length; i++) {
       String line = lines[i].trim();
       if (line.toLowerCase().contains(key.toLowerCase())) {
+        // Case 1: "Vehicle No : OD34W8460" same line
         if (line.contains(':')) {
           String value = line.split(':').last.trim();
           if (value.isNotEmpty) return _cleanValue(value, key);
         }
+        // Case 2: "Vehicle No" ek line, "OD34W8460" porer line
         if (i + 1 < lines.length) {
           String nextLine = lines[i + 1].trim();
           if (nextLine.isNotEmpty &&!nextLine.contains(':')) {
@@ -158,6 +172,7 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     return value.isEmpty? 'N/A' : value;
   }
+  // ==== N/A FIX SESH ====
 
   Future<String?> _createExcel(Map<String, String> d) async {
     try {
@@ -165,6 +180,7 @@ class _CameraScreenState extends State<CameraScreen> {
       Sheet s = excel['Challan'];
       s.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
 
+      // Jodi OCR e date/time na pai, tobe aajker date/time bosabo
       String finalDate = d['date']!= 'N/A' && d['date']!.isNotEmpty? d['date']! : DateFormat('dd-MM-yyyy').format(DateTime.now());
       String finalTime = d['time']!= 'N/A' && d['time']!.isNotEmpty? d['time']! : DateFormat('hh:mm a').format(DateTime.now());
 
