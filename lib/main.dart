@@ -40,7 +40,9 @@ class HomeScreen extends StatelessWidget {
           style: ElevatedButton.styleFrom(minimumSize: const Size(250, 50)),
           onPressed: () async {
             await Permission.camera.request();
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
+            if (context.mounted) {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
+            }
           },
         ),
       ),
@@ -62,7 +64,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = CameraController(cameras[0], ResolutionPreset.high);
+    _controller = CameraController(cameras[0], ResolutionPreset.high, enableAudio: false);
     _controller.initialize().then((_) {
       if (mounted) setState(() => _isReady = true);
     });
@@ -93,59 +95,91 @@ class _CameraScreenState extends State<CameraScreen> {
         ));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
-      setState(() => _isProcessing = false);
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
+  // ==== EKHANE OCR FIX KORECHI ====
   Future<Map<String, String>> _extractTextFromImage(String path) async {
     final inputImage = InputImage.fromFilePath(path);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
     final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
     await textRecognizer.close();
 
-    String allText = recognizedText.text;
+    // Debug: Logcat e "flutter" filter diye dekhbi ki text pachhe
+    debugPrint("OCR RAW TEXT: ${recognizedText.text}");
+
     Map<String, String> data = {
-      'vehicle': _findValue(allText, ['Vehicle No', 'VehicleNo']),
-      'ticket': _findValue(allText, ['Ticket No', 'TicketNo']),
-      'gross': _findValue(allText, ['Gross Weight', 'GrossWeight']),
-      'tare': _findValue(allText, ['Tare Weight', 'TareWeight']),
-      'net': _findValue(allText, ['Net Weight', 'NetWeight']),
-      'material': _findValue(allText, ['Item Name/Type', 'Item Name', 'ItemName']),
+      'vehicle': _findValueByLine(recognizedText.text, ['VEHICLE NO', 'VEHICLENO', 'VEH NO', 'VEHICLE']),
+      'ticket': _findValueByLine(recognizedText.text, ['TICKET NO', 'TICKETNO', 'SLIP NO', 'TICKET']),
+      'gross': _findValueByLine(recognizedText.text, ['GROSS WEIGHT', 'GROSSWEIGHT', 'GROSS WT', 'GROSS']),
+      'tare': _findValueByLine(recognizedText.text, ['TARE WEIGHT', 'TAREWEIGHT', 'TARE WT', 'TARE']),
+      'net': _findValueByLine(recognizedText.text, ['NET WEIGHT', 'NETWEIGHT', 'NET WT', 'NET']),
+      'material': _findValueByLine(recognizedText.text, ['ITEM NAME/TYPE', 'ITEM NAME', 'ITEMNAME', 'MATERIAL', 'ITEM']),
+      'date': _findValueByLine(recognizedText.text, ['DATE', 'CHALLAN DATE']),
+      'time': _findValueByLine(recognizedText.text, ['TIME', 'CHALLAN TIME']),
     };
     return data;
   }
 
-  String _findValue(String text, List<String> keys) {
+  // Notun Smart Regex - Line by line + Colon chara o kaj korbe
+  String _findValueByLine(String fullText, List<String> keys) {
+    List<String> lines = fullText.split('\n');
     for (String key in keys) {
-      RegExp regExp = RegExp('$key\\s*:\\s*([\\w\\d\\s.]+)', caseSensitive: false);
-      Match? match = regExp.firstMatch(text);
-      if (match!= null && match.groupCount >= 1) {
-        return match.group(1)!.trim().split('\n')[0].replaceAll('KGS', '').trim();
+      for (String line in lines) {
+        String upperLine = line.toUpperCase().trim();
+        if (upperLine.contains(key.toUpperCase())) {
+          // "VEHICLE NO : KL86A4811" ba "VEHICLE NO KL86A4811" dutoi cholbe
+          String value = upperLine
+             .split(key.toUpperCase())[1] // Key er porer ongsho nao
+             .replaceAll(RegExp(r'[:.-]'), '') // : -. sob baad
+             .replaceAll('KGS', '')
+             .replaceAll('KG', '')
+             .replaceAll('DATE', '')
+             .replaceAll('TIME', '')
+             .trim();
+
+          if (value.isNotEmpty && value.length > 1) {
+            // Weight er jonno sudhu number ta nebo
+            if (key.toUpperCase().contains('WEIGHT') || key.toUpperCase().contains('GROSS') || key.toUpperCase().contains('TARE') || key.toUpperCase().contains('NET')) {
+              RegExp numReg = RegExp(r'(\d{4,})'); // 4 digit ba tar besi number
+              Match? match = numReg.firstMatch(value);
+              if (match!= null) return match.group(1)!;
+            }
+            return value;
+          }
+        }
       }
     }
     return 'N/A';
   }
+  // ==== OCR FIX SESH ====
 
   Future<String?> _createExcel(Map<String, String> d) async {
     try {
       var excel = Excel.createExcel();
       Sheet s = excel['Challan'];
       s.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
+
+      String finalDate = d['date']!= 'N/A' && d['date']!.isNotEmpty? d['date']! : DateFormat('dd-MM-yyyy').format(DateTime.now());
+      String finalTime = d['time']!= 'N/A' && d['time']!.isNotEmpty? d['time']! : DateFormat('hh:mm a').format(DateTime.now());
+
       s.appendRow([
         d['vehicle'], d['ticket'], d['gross'], d['tare'], d['net'], d['material'],
-        DateFormat('dd-MM-yyyy').format(DateTime.now()),
-        DateFormat('hh:mm a').format(DateTime.now()),
+        finalDate, finalTime,
       ]);
       var dir = await getApplicationDocumentsDirectory();
-      var file = File("${dir.path}/RSLPL_${DateTime.now().millisecondsSinceEpoch}.xlsx");
+      var file = File("${dir.path}/RSLPL_${d['ticket']}_${DateTime.now().millisecondsSinceEpoch}.xlsx");
       var bytes = excel.save();
       if (bytes!= null) {
         await file.writeAsBytes(bytes);
         return file.path;
       }
-    } catch (e) {}
+    } catch (e) { debugPrint("Excel Error: $e"); }
     return null;
   }
 
@@ -158,7 +192,7 @@ class _CameraScreenState extends State<CameraScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isProcessing? null : _scanAndProcess,
         label: _isProcessing? const Text('Scanning...') : const Text('Scan'),
-        icon: _isProcessing? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.camera),
+        icon: _isProcessing? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.camera),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
@@ -183,9 +217,10 @@ class ResultScreen extends StatelessWidget {
           Text('Material: ${data['material']}'),
           const SizedBox(height: 10),
           Text('Gross: ${data['gross']} KGS | Tare: ${data['tare']} KGS | Net: ${data['net']} KGS'),
+          Text('Date: ${data['date']} | Time: ${data['time']}'),
           const SizedBox(height: 20),
-          Image.file(File(imagePath), height: 200),
-          const Spacer(),
+          Expanded(child: Image.file(File(imagePath))),
+          const SizedBox(height: 10),
           ElevatedButton.icon(
             onPressed: excelPath == null? null : () => Share.shareXFiles([XFile(excelPath!)]),
             icon: const Icon(Icons.share),
@@ -194,7 +229,7 @@ class ResultScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Center(child: Text(
-            excelPath!= null? 'Excel Saved ✅' : 'OCR Failed ❌ Check Photo Quality',
+            excelPath!= null? 'Excel Saved ✅ Prottek ta challan alada hobe' : 'OCR Failed ❌ Photo clear kore tolo',
             style: TextStyle(color: excelPath!= null? Colors.green : Colors.red, fontWeight: FontWeight.bold),
           )),
         ]),
