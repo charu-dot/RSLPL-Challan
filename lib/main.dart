@@ -107,7 +107,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  // ==== OCR ER ASOL KAAJ EKAHNE ====
   Future<Map<String, String>> _extractTextFromImage(String path) async {
     final inputImage = InputImage.fromFilePath(path);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
@@ -123,50 +122,70 @@ class _CameraScreenState extends State<CameraScreen> {
       'gross': _getValue(fullText, 'Gross Weight'),
       'tare': _getValue(fullText, 'Tare Weight'),
       'net': _getValue(fullText, 'Net Weight'),
-      'material': _getValue(fullText, 'Item Name/Type'),
+      'material': _getValue(fullText, 'Item Name'),
       'date': _getValue(fullText, 'Ticket Date'),
       'time': _getValue(fullText, 'Time'),
     };
   }
 
-  // // ==== EI FUNCTION TA REPLACE KOR. 100% CHOLBE ====
-Future<Map<String, String>> _extractTextFromImage(String path) async {
-  final inputImage = InputImage.fromFilePath(path);
-  final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-  final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-  await textRecognizer.close();
-
-  String fullText = recognizedText.text;
-  debugPrint("OCR TEXT: $fullText");
-
-  // ==== PURONO RETURN TA DELETE KORE ETA PASTE KOR ====
-  return {
-    'vehicle': _getValue(fullText, 'Vehicle No'),
-    'ticket': _getValue(fullText, 'Ticket No'),
-    'gross': _getValue(fullText, 'Gross Weight'),
-    'tare': _getValue(fullText, 'Tare Weight'),
-    'net': _getValue(fullText, 'Net Weight'),
-    'material': _getValue(fullText, 'Item Name'), // Eta 'Item Name/Type' chhilo, ekhon 'Item Name'
-    'date': _getValue(fullText, 'Ticket Date'),
-    'time': _getValue(fullText, 'Time'),
-  };
-  // ==== PASTE SESH ====
-}
-
-// Value ta clean korar jonno helper
-String _cleanValue(String value, String key) {
-  value = value.replaceAll('KGS', '').replaceAll('KG', '').trim();
-  // Sudhu number lagle
-  if (key.contains('Weight')) {
-    value = value.replaceAll(RegExp(r'[^0-9]'), '');
+  String _getValue(String fullText, String key) {
+    List<String> lines = fullText.split('\n');
+    for (int i = 0; i < lines.length; i++) {
+      String line = lines[i].trim();
+      if (line.toLowerCase().contains(key.toLowerCase())) {
+        if (line.contains(':')) {
+          String value = line.split(':').last.trim();
+          if (value.isNotEmpty) return _cleanValue(value, key);
+        }
+        if (i + 1 < lines.length) {
+          String nextLine = lines[i + 1].trim();
+          if (nextLine.isNotEmpty &&!nextLine.contains(':')) {
+            return _cleanValue(nextLine, key);
+          }
+        }
+      }
+    }
+    return 'N/A';
   }
-  // Date format
-  if (key.contains('Date')) {
-    value = value.split(' ').first.replaceAll('/', '-');
+
+  String _cleanValue(String value, String key) {
+    value = value.replaceAll('KGS', '').replaceAll('KG', '').trim();
+    if (key.contains('Weight')) {
+      value = value.replaceAll(RegExp(r'[^0-9]'), '');
+    }
+    if (key.contains('Date')) {
+      value = value.split(' ').first.replaceAll('/', '-');
+    }
+    return value.isEmpty? 'N/A' : value;
   }
-  return value.isEmpty? 'N/A' : value;
-}
-// ==== FIX SESH ====
+
+  Future<String?> _createExcel(Map<String, String> d) async {
+    try {
+      var excel = Excel.createExcel();
+      Sheet s = excel['Challan'];
+      s.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
+
+      String finalDate = d['date']!= 'N/A' && d['date']!.isNotEmpty? d['date']! : DateFormat('dd-MM-yyyy').format(DateTime.now());
+      String finalTime = d['time']!= 'N/A' && d['time']!.isNotEmpty? d['time']! : DateFormat('hh:mm a').format(DateTime.now());
+
+      s.appendRow([
+        d['vehicle'], d['ticket'], d['gross'], d['tare'], d['net'], d['material'],
+        finalDate, finalTime,
+      ]);
+
+      var dir = await getApplicationDocumentsDirectory();
+      var fileName = "RSLPL_${d['ticket']}_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      var file = File("${dir.path}/$fileName");
+      var bytes = excel.save();
+      if (bytes!= null) {
+        await file.writeAsBytes(bytes);
+        return file.path;
+      }
+    } catch (e) {
+      debugPrint("Excel Error: $e");
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
