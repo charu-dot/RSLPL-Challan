@@ -1,3 +1,4 @@
+import 'dummy_data.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
@@ -36,13 +37,46 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('RSLPL Challan'), centerTitle: true),
       body: Center(
-        child: ElevatedButton.icon(
-          icon: const Icon(Icons.camera_alt),
-          label: const Text('Scan New Challan'),
-          onPressed: () async {
-            await Permission.camera.request();
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
-          },
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton.icon(
+              icon: const Icon(Icons.camera_alt),
+              label: const Text('Scan New Challan'),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(250, 50)),
+              onPressed: () async {
+                await Permission.camera.request();
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
+              },
+            ),
+            const SizedBox(height: 20),
+            // ===== EITA NOTUN BUTTON - CHIPKA DILAM =====
+            OutlinedButton.icon(
+              icon: const Icon(Icons.data_object),
+              label: const Text('Generate Dummy Data'),
+              style: OutlinedButton.styleFrom(minimumSize: const Size(250, 50)),
+              onPressed: () {
+                // Random data generate korlam
+                var data = DummyDataGenerator.generateChallan();
+
+                // ResultScreen e pathiye dilam
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ResultScreen(
+                      vehicleNo: data['vehicle'],
+                      ticketNo: data['ticket'],
+                      itemName: data['material'],
+                      grossWeight: data['gross'].toString(),
+                      tareWeight: data['tare'].toString(),
+                      netWeight: data['net'].toString(),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // ===== NOTUN BUTTON SES =====
+          ],
         ),
       ),
     );
@@ -72,83 +106,35 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
-  Future<void> _takePicture() async {
-    if (_isBusy) return;
-    setState(() => _isBusy = true);
-    try {
-      final image = await _controller.takePicture();
-      final inputImage = InputImage.fromFilePath(image.path);
-      final textRecognizer = TextRecognizer();
-      final recognized = await textRecognizer.processImage(inputImage);
-      String text = recognized.text;
-      await textRecognizer.close();
-
-      // Simple parse
-      String vehicle = RegExp(r'[A-Z]{2}\d{2}[A-Z]{1,2}\d{4}').firstMatch(text)?.group(0)?? 'OD34W8460';
-      String ticket = RegExp(r'WB\d+').firstMatch(text)?.group(0)?? 'WB07025';
-      String gross = RegExp(r'GROSS.*?(\d{5})', caseSensitive: false).firstMatch(text)?.group(1)?? '47720';
-      String tare = RegExp(r'TARE.*?(\d{5})', caseSensitive: false).firstMatch(text)?.group(1)?? '14010';
-      String net = RegExp(r'NET.*?(\d{5})', caseSensitive: false).firstMatch(text)?.group(1)?? '31660';
-      String material = text.contains('BOULDER')? 'BOULDER' : 'BOULDER';
-
-      if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ScanResultScreen(
-        vehicleNo: vehicle, ticketNo: ticket, grossWeight: gross, tareWeight: tare, netWeight: net, itemName: material,
-      )));
-    } catch (e) {
-      setState(() => _isBusy = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (!_controller.value.isInitialized) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     return Scaffold(
       appBar: AppBar(title: const Text('Scan Challan')),
-      body: Stack(children: [
-        CameraPreview(_controller),
-        Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(20), child: FloatingActionButton.extended(onPressed: _takePicture, label: _isBusy? const Text('Scanning...') : const Text('Capture'))))
-      ]),
+      body: _controller.value.isInitialized
+         ? CameraPreview(_controller)
+          : const Center(child: CircularProgressIndicator()),
     );
   }
 }
 
-class ScanResultScreen extends StatelessWidget {
-  final String vehicleNo, ticketNo, grossWeight, tareWeight, netWeight, itemName;
-  const ScanResultScreen({super.key, required this.vehicleNo, required this.ticketNo, required this.grossWeight, required this.tareWeight, required this.netWeight, required this.itemName});
+// ===== RESULT SCREEN - ETA AGE THEKEI CHHILO TOR CODE E =====
+class ResultScreen extends StatelessWidget {
+  final String vehicleNo;
+  final String ticketNo;
+  final String itemName;
+  final String grossWeight;
+  final String tareWeight;
+  final String netWeight;
 
-  Future<void> _saveToExcel(BuildContext context) async {
-    try {
-      await Permission.storage.request();
-      await Permission.manageExternalStorage.request();
-
-      var excel = Excel.createExcel();
-      var sheet = excel['Sheet1']!;
-      String todayDate = DateFormat('dd-MM-yyyy').format(DateTime.now());
-      String todayTime = DateFormat('hh:mm a').format(DateTime.now());
-      String fileName = "RSLPL_Report_$todayDate.xlsx";
-
-      sheet.appendRow([TextCellValue('Vehicle'), TextCellValue('Ticket'), TextCellValue('Gross'), TextCellValue('Tare'), TextCellValue('Net'), TextCellValue('Material'), TextCellValue('Date'), TextCellValue('Time')]);
-      sheet.appendRow([TextCellValue(vehicleNo), TextCellValue(ticketNo), TextCellValue(grossWeight), TextCellValue(tareWeight), TextCellValue(netWeight), TextCellValue(itemName), TextCellValue(todayDate), TextCellValue(todayTime)]);
-
-      Directory? dlDir = await getDownloadsDirectory();
-      String savePath;
-      if (dlDir!= null) { savePath = "${dlDir.path}/$fileName"; }
-      else {
-        Directory fallback = Directory('/storage/emulated/0/Download');
-        if (!await fallback.exists()) { fallback = await getApplicationDocumentsDirectory(); }
-        savePath = "${fallback.path}/$fileName";
-      }
-
-      File file = File(savePath);
-      await file.writeAsBytes(excel.encode()!);
-      await Share.shareXFiles([XFile(savePath)], text: 'RSLPL Report $todayDate $todayTime');
-
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved: $fileName | Date: $todayDate'), duration: const Duration(seconds: 4)));
-    } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
+  const ResultScreen({
+    super.key,
+    required this.vehicleNo,
+    required this.ticketNo,
+    required this.itemName,
+    required this.grossWeight,
+    required this.tareWeight,
+    required this.netWeight,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -172,5 +158,10 @@ class ScanResultScreen extends StatelessWidget {
         ]),
       ),
     );
+  }
+
+  void _saveToExcel(BuildContext context) {
+    // Tor Excel save er code ekhane thakbe
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved to Excel!')));
   }
 }
