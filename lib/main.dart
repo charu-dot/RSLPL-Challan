@@ -111,28 +111,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<String?> _saveToExcel(Map<String, dynamic> data) async {
-    var excel = Excel.createExcel();
-    Sheet sheetObject = excel['ChallanData'];
-
-    sheetObject.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
-    sheetObject.appendRow([
-      data['vehicle'], data['ticket'], data['gross'], data['tare'], data['net'], data['material'],
-      DateFormat('dd-MM-yyyy').format(DateTime.now()),
-      DateFormat('hh:mm a').format(DateTime.now()),
-    ]);
-
-    var status = await Permission.storage.status;
-    if (status.isGranted) {
-      Directory dir = await getApplicationDocumentsDirectory(); // Android 11+ safe
-      String filePath = "${dir.path}/RSLPL_Challan_${DateTime.now().millisecondsSinceEpoch}.xlsx";
-      List<int>? fileBytes = excel.save();
-      if (fileBytes!= null) {
-        File(filePath)..createSync(recursive: true)..writeAsBytesSync(fileBytes);
-        return filePath;
-      }
-    }
-    return null;
-  }
+  sha256:7e73d6afee696088858dbd2216b1fe893ebfa945df9c4f3ec83850608b9bdcff
 
   @override
   Widget build(BuildContext context) {
