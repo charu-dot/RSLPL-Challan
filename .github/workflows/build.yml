@@ -1,4 +1,4 @@
-name: Build RSLPL AAB for Play Store
+name: Build RSLPL APK + AAB
 on:
   push:
     branches: [ main ]
@@ -57,9 +57,19 @@ jobs:
 
       - run: flutter pub get
       
-      - run: flutter build appbundle --release
+      - name: Build APK for Testing
+        run: flutter build apk --release
+      
+      - name: Build AAB for Play Store
+        run: flutter build appbundle --release
 
-      - name: Upload AAB to Artifacts
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RSLPL-Challan-APK-Test
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload AAB Artifact
         uses: actions/upload-artifact@v4
         with:
           name: RSLPL-Challan-AAB-PlayStore
