@@ -42,6 +42,7 @@ class HomeScreen extends StatelessWidget {
           style: ElevatedButton.styleFrom(minimumSize: const Size(250, 50)),
           onPressed: () async {
             await Permission.camera.request();
+            await Permission.storage.request(); // Permission agei chaibo
             Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
           },
         ),
@@ -59,6 +60,7 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
   bool _isInitialized = false;
+  bool _isCapturing = false;
 
   @override
   void initState() {
@@ -77,10 +79,13 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _captureAndGenerateExcel() async {
+    if (_isCapturing) return;
+    setState(() => _isCapturing = true);
+
     try {
       final XFile file = await _controller.takePicture();
       var data = DummyDataGenerator.generateChallan();
-      await _saveToExcel(data);
+      String? filePath = await _saveToExcel(data);
 
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -94,60 +99,51 @@ class _CameraScreenState extends State<CameraScreen> {
             grossWeight: data['gross'].toString(),
             tareWeight: data['tare'].toString(),
             netWeight: data['net'].toString(),
+            excelPath: filePath,
           ),
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      setState(() => _isCapturing = false);
     }
   }
 
-  Future<void> _saveToExcel(Map<String, dynamic> data) async {
+  Future<String?> _saveToExcel(Map<String, dynamic> data) async {
     var excel = Excel.createExcel();
     Sheet sheetObject = excel['ChallanData'];
 
     sheetObject.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
-
     sheetObject.appendRow([
-      data['vehicle'],
-      data['ticket'],
-      data['gross'],
-      data['tare'],
-      data['net'],
-      data['material'],
+      data['vehicle'], data['ticket'], data['gross'], data['tare'], data['net'], data['material'],
       DateFormat('dd-MM-yyyy').format(DateTime.now()),
       DateFormat('hh:mm a').format(DateTime.now()),
     ]);
-    
-    var status = await Permission.storage.request();
+
+    var status = await Permission.storage.status;
     if (status.isGranted) {
-      Directory? dir = await getExternalStorageDirectory();
-      String filePath = "${dir!.path}/RSLPL_Challan_${DateTime.now().millisecondsSinceEpoch}.xlsx";
-
+      Directory dir = await getApplicationDocumentsDirectory(); // Android 11+ safe
+      String filePath = "${dir.path}/RSLPL_Challan_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       List<int>? fileBytes = excel.save();
-      if (fileBytes != null) {
-        File(filePath)
-         ..createSync(recursive: true)
-         ..writeAsBytesSync(fileBytes);
-
-        Share.shareXFiles([XFile(filePath)], text: 'RSLPL Challan Auto Generated');
+      if (fileBytes!= null) {
+        File(filePath)..createSync(recursive: true)..writeAsBytesSync(fileBytes);
+        return filePath;
       }
     }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    if (!_isInitialized) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     return Scaffold(
       appBar: AppBar(title: const Text('Scan Challan')),
       body: CameraPreview(_controller),
       floatingActionButton: FloatingActionButton(
-        onPressed: _captureAndGenerateExcel,
-        child: const Icon(Icons.camera),
+        onPressed: _isCapturing? null : _captureAndGenerateExcel,
+        backgroundColor: _isCapturing? Colors.grey : null,
+        child: _isCapturing? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.camera),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
@@ -155,24 +151,21 @@ class _CameraScreenState extends State<CameraScreen> {
 }
 
 class ResultScreen extends StatelessWidget {
-  final String imagePath;
-  final String vehicleNo;
-  final String ticketNo;
-  final String itemName;
-  final String grossWeight;
-  final String tareWeight;
-  final String netWeight;
+  final String imagePath, vehicleNo, ticketNo, itemName, grossWeight, tareWeight, netWeight;
+  final String? excelPath;
 
   const ResultScreen({
-    super.key,
-    required this.imagePath,
-    required this.vehicleNo,
-    required this.ticketNo,
-    required this.itemName,
-    required this.grossWeight,
-    required this.tareWeight,
-    required this.netWeight,
+    super.key, required this.imagePath, required this.vehicleNo, required this.ticketNo, required this.itemName,
+    required this.grossWeight, required this.tareWeight, required this.netWeight, this.excelPath,
   });
+
+  void _shareExcel(BuildContext context) {
+    if (excelPath!= null) {
+      Share.shareXFiles([XFile(excelPath!)], text: 'RSLPL Challan: $vehicleNo');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel file not found. Allow Storage Permission.')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -187,24 +180,27 @@ class ResultScreen extends StatelessWidget {
           Text('$ticketNo • $itemName', style: const TextStyle(color: Colors.grey)),
           const SizedBox(height: 20),
           Container(
-            padding: const EdgeInsets.all(16), 
-            decoration: BoxDecoration(
-              color: const Color(0xFFE6F0FF), 
-              borderRadius: BorderRadius.circular(12)
-            ), 
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween, 
-              children: [
-                Column(children: [const Text('Gross'), Text('$grossWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
-                Column(children: [const Text('Tare'), Text('$tareWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
-                Column(children: [const Text('Net', style: TextStyle(color: Colors.green)), Text('$netWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))]),
-              ]
-            )
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: const Color(0xFFE6F0FF), borderRadius: BorderRadius.circular(12)),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Column(children: [const Text('Gross'), Text('$grossWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
+              Column(children: [const Text('Tare'), Text('$tareWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
+              Column(children: [const Text('Net', style: TextStyle(color: Colors.green)), Text('$netWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))]),
+            ])
           ),
           const SizedBox(height: 20),
           Image.file(File(imagePath), height: 200),
           const Spacer(),
-          const Text('Excel file saved & ready to share on WhatsApp ✅', style: TextStyle(color: Colors.blue)),
+          // EI BUTTON TA NOTUN
+          ElevatedButton.icon(
+            onPressed: () => _shareExcel(context),
+            icon: const Icon(Icons.share),
+            label: const Text('Share Excel on WhatsApp'),
+            style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+          ),
+          const SizedBox(height: 10),
+          Text(excelPath!= null? 'Excel saved ✅' : 'Excel save failed ❌ Check permission',
+              style: TextStyle(color: excelPath!= null? Colors.blue : Colors.red)),
         ]),
       ),
     );
