@@ -140,28 +140,40 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   // ==== N/A FIX: Key-Value same line ba porer line e thakleo cholbe ====
-  String _getValue(String fullText, String key) {
-    List<String> lines = fullText.split('\n');
-    for (int i = 0; i < lines.length; i++) {
-      String line = lines[i].trim();
-      if (line.toLowerCase().contains(key.toLowerCase())) {
-        // Case 1: "Vehicle No : OD34W8460" same line
-        if (line.contains(':')) {
-          String value = line.split(':').last.trim();
+   String _getValue(String fullText, String key) {
+  // Key er sob rokom version baniye nilam
+  List<String> possibleKeys = [];
+  if (key == 'Vehicle No') possibleKeys = ['Vehicle No', 'Veh No', 'VehicleNo', 'Vehicle'];
+  else if (key == 'Ticket No') possibleKeys = ['Ticket No', 'Ticket No.', 'TicketNo', 'Challan No'];
+  else if (key == 'Gross Weight') possibleKeys = ['Gross Weight', 'Gross Wt', 'Gross'];
+  else if (key == 'Tare Weight') possibleKeys = ['Tare Weight', 'Tare Wt', 'Tare'];
+  else if (key == 'Net Weight') possibleKeys = ['Net Weight', 'Net Wt', 'Net'];
+  else if (key == 'Item Name') possibleKeys = ['Item Name', 'Material', 'Item', 'Product'];
+  else if (key == 'Ticket Date') possibleKeys = ['Ticket Date', 'Date', 'Dt'];
+  else if (key == 'Time') possibleKeys = ['Time', 'Tm'];
+
+  List<String> lines = fullText.split('\n');
+  for (int i = 0; i < lines.length; i++) {
+    String line = lines[i].trim().toLowerCase();
+
+    // Sob rokom key check korbo
+    for (String k in possibleKeys) {
+      if (line.contains(k.toLowerCase())) {
+        // Case 1: Same line e achhe "Key : Value"
+        if (lines[i].contains(':')) {
+          String value = lines[i].split(':').last.trim();
           if (value.isNotEmpty) return _cleanValue(value, key);
         }
-        // Case 2: "Vehicle No" ek line, "OD34W8460" porer line
+        // Case 2: Porer line e achhe
         if (i + 1 < lines.length) {
           String nextLine = lines[i + 1].trim();
-          if (nextLine.isNotEmpty &&!nextLine.contains(':')) {
-            return _cleanValue(nextLine, key);
-          }
+          if (nextLine.isNotEmpty) return _cleanValue(nextLine, key);
         }
       }
     }
-    return 'N/A';
   }
-
+  return 'N/A';
+}
   String _cleanValue(String value, String key) {
     value = value.replaceAll('KGS', '').replaceAll('KG', '').trim();
     if (key.contains('Weight')) {
