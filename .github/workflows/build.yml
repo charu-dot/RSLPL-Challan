@@ -25,8 +25,6 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.CAMERA" />
               <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
               <application android:label="RSLPL Challan OCR" android:name="${applicationName}" android:icon="@mipmap/ic_launcher">
                   <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/LaunchTheme" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">
                       <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
@@ -44,10 +42,11 @@ jobs:
           </manifest>
           EOF
 
-      # Ei step tai Duplicate class error thik korbe
-      - name: Fix Kotlin Duplicate Class Error
+      # Ei step tai asol. Ebar 2to fix ek sathe. 1. Version 1.8.10 fixed 2. jdk8 ta baad
+      - name: Nuclear Fix for Kotlin Duplicate Class
         run: |
-          sed -i '/android {/a \    configurations.all {\n        resolutionStrategy {\n            force "org.jetbrains.kotlin:kotlin-stdlib:1.8.10"\n        }\n    }' android/app/build.gradle
+          sed -i '/android {/a \    configurations.all {\n        resolutionStrategy {\n            force "org.jetbrains.kotlin:kotlin-stdlib:1.8.10"\n        }\n        exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk8"\n    }' android/app/build.gradle
+          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.8.10"/' android/build.gradle
 
       - run: flutter pub get
       - run: flutter build apk --release
