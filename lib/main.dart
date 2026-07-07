@@ -2,7 +2,6 @@ import 'dummy_data.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:excel/excel.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -77,25 +76,18 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
-  // ===== EKHANE MAGIC HOCHHE =====
   Future<void> _captureAndGenerateExcel() async {
     try {
-      // 1. Camera diye chobi tol
       final XFile file = await _controller.takePicture();
-
-      // 2. Random data generate kor
       var data = DummyDataGenerator.generateChallan();
-
-      // 3. Excel file baniye save kor
       await _saveToExcel(data);
 
-      // 4. ResultScreen e pathiye de
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => ResultScreen(
-            imagePath: file.path, // Chobi ta dekhate chaile
+            imagePath: file.path,
             vehicleNo: data['vehicle'],
             ticketNo: data['ticket'],
             itemName: data['material'],
@@ -116,10 +108,8 @@ class _CameraScreenState extends State<CameraScreen> {
     var excel = Excel.createExcel();
     Sheet sheetObject = excel['ChallanData'];
 
-    // Header
     sheetObject.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
 
-    // Random Data Row
     sheetObject.appendRow([
       data['vehicle'],
       data['ticket'],
@@ -131,19 +121,17 @@ class _CameraScreenState extends State<CameraScreen> {
       DateFormat('hh:mm a').format(DateTime.now()),
     ]);
 
-    // Phone e save kor
     var status = await Permission.storage.request();
     if (status.isGranted) {
       Directory? dir = await getExternalStorageDirectory();
       String filePath = "${dir!.path}/RSLPL_Challan_${DateTime.now().millisecondsSinceEpoch}.xlsx";
 
       List<int>? fileBytes = excel.save();
-      if (fileBytes!= null) {
+      if (fileBytes != null) {
         File(filePath)
          ..createSync(recursive: true)
          ..writeAsBytesSync(fileBytes);
 
-        // WhatsApp e share korar option de
         Share.shareXFiles([XFile(filePath)], text: 'RSLPL Challan Auto Generated');
       }
     }
@@ -158,7 +146,7 @@ class _CameraScreenState extends State<CameraScreen> {
       appBar: AppBar(title: const Text('Scan Challan')),
       body: CameraPreview(_controller),
       floatingActionButton: FloatingActionButton(
-        onPressed: _captureAndGenerateExcel, // ===== EI BUTTON TIP DILEI HOBE =====
+        onPressed: _captureAndGenerateExcel,
         child: const Icon(Icons.camera),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -198,13 +186,23 @@ class ResultScreen extends StatelessWidget {
           Text(vehicleNo, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
           Text('$ticketNo • $itemName', style: const TextStyle(color: Colors.grey)),
           const SizedBox(height: 20),
-          Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0xFFE6F0FF), borderRadius: BorderRadius.circular(12)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Column(children: [const Text('Gross'), Text('$grossWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
-            Column(children: [const Text('Tare'), Text('$tareWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
-            Column(children: [const Text('Net', style: TextStyle(color: Colors.green)), Text('$netWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))]),
-          ])),
+          Container(
+            padding: const EdgeInsets.all(16), 
+            decoration: BoxDecoration(
+              color: const Color(0xFFE6F0FF), 
+              borderRadius: BorderRadius.circular(12)
+            ), 
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+              children: [
+                Column(children: [const Text('Gross'), Text('$grossWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
+                Column(children: [const Text('Tare'), Text('$tareWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold))]),
+                Column(children: [const Text('Net', style: TextStyle(color: Colors.green)), Text('$netWeight KGS', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))]),
+              ]
+            )
+          ),
           const SizedBox(height: 20),
-          Image.file(File(imagePath), height: 200), // Captured chobi ta dekhabe
+          Image.file(File(imagePath), height: 200),
           const Spacer(),
           const Text('Excel file saved & ready to share on WhatsApp ✅', style: TextStyle(color: Colors.blue)),
         ]),
