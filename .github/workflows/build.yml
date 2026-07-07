@@ -1,8 +1,7 @@
 name: Build RSLPL APK
-
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
   build:
@@ -15,12 +14,43 @@ jobs:
           java-version: '17'
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: '3.22.2'
           channel: 'stable'
+
+      # 1. Tomar sudhu dart file ache tai android folder auto banabe
+      - run: flutter create --project-name rslpl_challan --platforms=android .
+
+      # 2. Amader RSLPL er jonno dorkari permission wala Manifest bosabe
+      - name: Add Custom AndroidManifest
+        run: |
+          cat > android/app/src/main/AndroidManifest.xml << 'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+              <application android:label="RSLPL Challan OCR" android:name="${applicationName}" android:icon="@mipmap/launcher_icon">
+                  <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/LaunchTheme" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">
+                      <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+                      <intent-filter android:autoVerify="true">
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <meta-data android:name="flutterEmbedding" android:value="2" />
+              </application>
+              <queries>
+                  <intent><action android:name="android.intent.action.PICK" /><data android:mimeType="image/*" /></intent>
+                  <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
+              </queries>
+          </manifest>
+          EOF
+
       - run: flutter pub get
       - run: flutter build apk --release
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: rslpl-challan-apk
+          name: RSLPL-Challan-APK
           path: build/app/outputs/flutter-apk/app-release.apk
