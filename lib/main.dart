@@ -33,11 +33,16 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('RSLPL Challan OCR')),
+      backgroundColor: Colors.grey[200],
       body: Center(
         child: ElevatedButton.icon(
-          icon: const Icon(Icons.document_scanner),
-          label: const Text('Scan Challan'),
-          style: ElevatedButton.styleFrom(minimumSize: const Size(250, 50)),
+          icon: const Icon(Icons.document_scanner, size: 28),
+          label: const Text('Scan Challan', style: TextStyle(fontSize: 18)),
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(250, 60),
+            backgroundColor: Colors.blue[700],
+            foregroundColor: Colors.white,
+          ),
           onPressed: () async {
             await Permission.camera.request();
             if (context.mounted) {
@@ -97,67 +102,59 @@ class _CameraScreenState extends State<CameraScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        setState(() => _isProcessing = false);
       }
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  // ==== EI 2TO FUNCTION REPLACE KOR ====
-Future<Map<String, String>> _extractTextFromImage(String path) async {
-  final inputImage = InputImage.fromFilePath(path);
-  final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-  final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-  await textRecognizer.close();
+  // ==== OCR ER ASOL KAAJ EKAHNE ====
+  Future<Map<String, String>> _extractTextFromImage(String path) async {
+    final inputImage = InputImage.fromFilePath(path);
+    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+    await textRecognizer.close();
 
-  String fullText = recognizedText.text;
-  debugPrint("OCR FULL TEXT:\n$fullText"); // Eta dekhe ami bujhbo format
+    String fullText = recognizedText.text;
+    debugPrint("OCR TEXT: $fullText");
 
-  Map<String, String> data = {
-    'vehicle': _findValueInLine(fullText, ['VEHICLE NO', 'VEHICLENO', 'VEH NO']),
-    'ticket': _findValueInLine(fullText, ['TICKET NO', 'TICKETNO', 'SLIP NO']),
-    'gross': _findValueInLine(fullText, ['GROSS WEIGHT', 'GROSSWEIGHT', 'GROSS']),
-    'tare': _findValueInLine(fullText, ['TARE WEIGHT', 'TAREWEIGHT', 'TARE']),
-    'net': _findValueInLine(fullText, ['NET WEIGHT', 'NETWEIGHT', 'NET']),
-    'material': _findValueInLine(fullText, ['ITEM NAME', 'ITEMNAME', 'MATERIAL', 'ITEM TYPE']),
-    'date': _findValueInLine(fullText, ['DATE']),
-    'time': _findValueInLine(fullText, ['TIME']),
-  };
-  return data;
-}
+    return {
+      'vehicle': _getValue(fullText, 'Vehicle No'),
+      'ticket': _getValue(fullText, 'Ticket No'),
+      'gross': _getValue(fullText, 'Gross Weight'),
+      'tare': _getValue(fullText, 'Tare Weight'),
+      'net': _getValue(fullText, 'Net Weight'),
+      'material': _getValue(fullText, 'Item Name/Type'),
+      'date': _getValue(fullText, 'Ticket Date'),
+      'time': _getValue(fullText, 'Time'),
+    };
+  }
 
-// Notun Logic: Line er moddhe key thakle, baki ta value
-String _findValueInLine(String fullText, List<String> keys) {
-  List<String> lines = fullText.split('\n');
-  for (String key in keys) {
-    for (String line in lines) {
-      String upperLine = line.toUpperCase();
-      if (upperLine.contains(key.toUpperCase())) {
-        // "VEHICLE NO : KL86A4811" → "KL86A4811"
-        // "GROSS WEIGHT 39080 KGS" → "39080 KGS"
-        String value = upperLine.split(key.toUpperCase()).last
-           .replaceAll(RegExp(r'^[:.\-\s]+'), '') // Samner : . - space sob baad
-           .replaceAll('KGS', '')
-           .replaceAll('KG', '')
-           .trim();
+  // EI FUNCTION TA PROTTEK TA CHALLAN THEKE DATA KHUJE BAR KORBE
+  String _getValue(String fullText, String key) {
+    try {
+      for (String line in fullText.split('\n')) {
+        if (line.toLowerCase().contains(key.toLowerCase())) {
+          // "Vehicle No : OD34W8460" theke "OD34W8460" kete nebe
+          String value = line.split(':').last.trim();
 
-        if (value.isNotEmpty && value != 'N/A' && value != 'NO' && value != 'WEIGHT' && value != 'NAME') {
-          // Sudhu number chaile
-          if (key.toUpperCase().contains('WEIGHT') || key.toUpperCase().contains('GROSS') || key.toUpperCase().contains('TARE') || key.toUpperCase().contains('NET')) {
-            RegExp numReg = RegExp(r'(\d+)');
-            Match? match = numReg.firstMatch(value);
-            if (match!= null) return match.group(1)!;
+          // Sudhu number lagle
+          if (key.contains('Weight')) {
+            value = value.replaceAll(RegExp(r'[^0-9]'), '');
           }
-          return value;
+          // Date format thik kora
+          if (key.contains('Date')) {
+            value = value.split(' ').first.replaceAll('/', '-');
+          }
+
+          return value.isEmpty? 'N/A' : value;
         }
       }
+    } catch (e) {
+      debugPrint("Error parsing $key: $e");
     }
+    return 'N/A';
   }
-  return 'N/A';
-}
-// ==== FIX SESH ====
-    
-    
+  // ==== OCR SESH ====
 
   Future<String?> _createExcel(Map<String, String> d) async {
     try {
@@ -165,6 +162,7 @@ String _findValueInLine(String fullText, List<String> keys) {
       Sheet s = excel['Challan'];
       s.appendRow(['Vehicle', 'Ticket', 'Gross', 'Tare', 'Net', 'Material', 'Date', 'Time']);
 
+      // Jodi challan e date/time na thake, tahole aajker ta nebe
       String finalDate = d['date']!= 'N/A' && d['date']!.isNotEmpty? d['date']! : DateFormat('dd-MM-yyyy').format(DateTime.now());
       String finalTime = d['time']!= 'N/A' && d['time']!.isNotEmpty? d['time']! : DateFormat('hh:mm a').format(DateTime.now());
 
@@ -172,14 +170,18 @@ String _findValueInLine(String fullText, List<String> keys) {
         d['vehicle'], d['ticket'], d['gross'], d['tare'], d['net'], d['material'],
         finalDate, finalTime,
       ]);
+
       var dir = await getApplicationDocumentsDirectory();
-      var file = File("${dir.path}/RSLPL_${d['ticket']}_${DateTime.now().millisecondsSinceEpoch}.xlsx");
+      var fileName = "RSLPL_${d['ticket']}_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      var file = File("${dir.path}/$fileName");
       var bytes = excel.save();
       if (bytes!= null) {
         await file.writeAsBytes(bytes);
         return file.path;
       }
-    } catch (e) { debugPrint("Excel Error: $e"); }
+    } catch (e) {
+      debugPrint("Excel Error: $e");
+    }
     return null;
   }
 
@@ -191,8 +193,8 @@ String _findValueInLine(String fullText, List<String> keys) {
       body: CameraPreview(_controller),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isProcessing? null : _scanAndProcess,
-        label: _isProcessing? const Text('Scanning...') : const Text('Scan'),
-        icon: _isProcessing? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.camera),
+        label: _isProcessing? const Text('Scanning...') : const Text('Scan Now'),
+        icon: _isProcessing? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.camera_alt),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
@@ -207,30 +209,49 @@ class ResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bool isSuccess = excelPath!= null && data['vehicle']!= 'N/A';
     return Scaffold(
       appBar: AppBar(title: const Text('Scan Result')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Vehicle: ${data['vehicle']}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          Text('Ticket: ${data['ticket']}'),
-          Text('Material: ${data['material']}'),
+          Card(
+            elevation: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Vehicle: ${data['vehicle']}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('Ticket: ${data['ticket']}', style: const TextStyle(fontSize: 16)),
+                Text('Material: ${data['material']}', style: const TextStyle(fontSize: 16)),
+                const Divider(),
+                Text('Gross: ${data['gross']} KGS | Tare: ${data['tare']} KGS | Net: ${data['net']} KGS'),
+                Text('Date: ${data['date']} | Time: ${data['time']}'),
+              ]),
+            ),
+          ),
           const SizedBox(height: 10),
-          Text('Gross: ${data['gross']} KGS | Tare: ${data['tare']} KGS | Net: ${data['net']} KGS'),
-          Text('Date: ${data['date']} | Time: ${data['time']}'),
-          const SizedBox(height: 20),
-          Expanded(child: Image.file(File(imagePath))),
-          const SizedBox(height: 10),
+          Text("Scanned Image:", style: TextStyle(color: Colors.grey[700])),
+          const SizedBox(height: 5),
+          Expanded(child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(File(imagePath), fit: BoxFit.contain),
+          )),
+          const SizedBox(height: 15),
           ElevatedButton.icon(
-            onPressed: excelPath == null? null : () => Share.shareXFiles([XFile(excelPath!)]),
+            onPressed: isSuccess? () => Share.shareXFiles([XFile(excelPath!)], text: "RSLPL Challan: ${data['ticket']}") : null,
             icon: const Icon(Icons.share),
             label: const Text('Share Excel on WhatsApp'),
-            style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 50),
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
           ),
           const SizedBox(height: 8),
           Center(child: Text(
-            excelPath!= null? 'Excel Saved ✅ Prottek ta challan alada hobe' : 'OCR Failed ❌ Photo clear kore tolo',
-            style: TextStyle(color: excelPath!= null? Colors.green : Colors.red, fontWeight: FontWeight.bold),
+            isSuccess? '✅ Success! Prottek challan er jonno alada Excel banbe' : '❌ OCR Failed. Photo aaro clear kore tolo.',
+            style: TextStyle(color: isSuccess? Colors.green : Colors.red, fontWeight: FontWeight.bold),
           )),
         ]),
       ),
