@@ -103,61 +103,61 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  // ==== EKHANE OCR FIX KORECHI ====
-  Future<Map<String, String>> _extractTextFromImage(String path) async {
-    final inputImage = InputImage.fromFilePath(path);
-    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-    final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-    await textRecognizer.close();
+  // ==== EI 2TO FUNCTION REPLACE KOR ====
+Future<Map<String, String>> _extractTextFromImage(String path) async {
+  final inputImage = InputImage.fromFilePath(path);
+  final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+  await textRecognizer.close();
 
-    // Debug: Logcat e "flutter" filter diye dekhbi ki text pachhe
-    debugPrint("OCR RAW TEXT: ${recognizedText.text}");
+  String fullText = recognizedText.text;
+  debugPrint("OCR FULL TEXT:\n$fullText"); // Eta dekhe ami bujhbo format
 
-    Map<String, String> data = {
-      'vehicle': _findValueByLine(recognizedText.text, ['VEHICLE NO', 'VEHICLENO', 'VEH NO', 'VEHICLE']),
-      'ticket': _findValueByLine(recognizedText.text, ['TICKET NO', 'TICKETNO', 'SLIP NO', 'TICKET']),
-      'gross': _findValueByLine(recognizedText.text, ['GROSS WEIGHT', 'GROSSWEIGHT', 'GROSS WT', 'GROSS']),
-      'tare': _findValueByLine(recognizedText.text, ['TARE WEIGHT', 'TAREWEIGHT', 'TARE WT', 'TARE']),
-      'net': _findValueByLine(recognizedText.text, ['NET WEIGHT', 'NETWEIGHT', 'NET WT', 'NET']),
-      'material': _findValueByLine(recognizedText.text, ['ITEM NAME/TYPE', 'ITEM NAME', 'ITEMNAME', 'MATERIAL', 'ITEM']),
-      'date': _findValueByLine(recognizedText.text, ['DATE', 'CHALLAN DATE']),
-      'time': _findValueByLine(recognizedText.text, ['TIME', 'CHALLAN TIME']),
-    };
-    return data;
-  }
+  Map<String, String> data = {
+    'vehicle': _findValueInLine(fullText, ['VEHICLE NO', 'VEHICLENO', 'VEH NO']),
+    'ticket': _findValueInLine(fullText, ['TICKET NO', 'TICKETNO', 'SLIP NO']),
+    'gross': _findValueInLine(fullText, ['GROSS WEIGHT', 'GROSSWEIGHT', 'GROSS']),
+    'tare': _findValueInLine(fullText, ['TARE WEIGHT', 'TAREWEIGHT', 'TARE']),
+    'net': _findValueInLine(fullText, ['NET WEIGHT', 'NETWEIGHT', 'NET']),
+    'material': _findValueInLine(fullText, ['ITEM NAME', 'ITEMNAME', 'MATERIAL', 'ITEM TYPE']),
+    'date': _findValueInLine(fullText, ['DATE']),
+    'time': _findValueInLine(fullText, ['TIME']),
+  };
+  return data;
+}
 
-  // Notun Smart Regex - Line by line + Colon chara o kaj korbe
-  String _findValueByLine(String fullText, List<String> keys) {
-    List<String> lines = fullText.split('\n');
-    for (String key in keys) {
-      for (String line in lines) {
-        String upperLine = line.toUpperCase().trim();
-        if (upperLine.contains(key.toUpperCase())) {
-          // "VEHICLE NO : KL86A4811" ba "VEHICLE NO KL86A4811" dutoi cholbe
-          String value = upperLine
-             .split(key.toUpperCase())[1] // Key er porer ongsho nao
-             .replaceAll(RegExp(r'[:.-]'), '') // : -. sob baad
-             .replaceAll('KGS', '')
-             .replaceAll('KG', '')
-             .replaceAll('DATE', '')
-             .replaceAll('TIME', '')
-             .trim();
+// Notun Logic: Line er moddhe key thakle, baki ta value
+String _findValueInLine(String fullText, List<String> keys) {
+  List<String> lines = fullText.split('\n');
+  for (String key in keys) {
+    for (String line in lines) {
+      String upperLine = line.toUpperCase();
+      if (upperLine.contains(key.toUpperCase())) {
+        // "VEHICLE NO : KL86A4811" → "KL86A4811"
+        // "GROSS WEIGHT 39080 KGS" → "39080 KGS"
+        String value = upperLine.split(key.toUpperCase()).last
+           .replaceAll(RegExp(r'^[:.\-\s]+'), '') // Samner : . - space sob baad
+           .replaceAll('KGS', '')
+           .replaceAll('KG', '')
+           .trim();
 
-          if (value.isNotEmpty && value.length > 1) {
-            // Weight er jonno sudhu number ta nebo
-            if (key.toUpperCase().contains('WEIGHT') || key.toUpperCase().contains('GROSS') || key.toUpperCase().contains('TARE') || key.toUpperCase().contains('NET')) {
-              RegExp numReg = RegExp(r'(\d{4,})'); // 4 digit ba tar besi number
-              Match? match = numReg.firstMatch(value);
-              if (match!= null) return match.group(1)!;
-            }
-            return value;
+        if (value.isNotEmpty && value != 'N/A' && value != 'NO' && value != 'WEIGHT' && value != 'NAME') {
+          // Sudhu number chaile
+          if (key.toUpperCase().contains('WEIGHT') || key.toUpperCase().contains('GROSS') || key.toUpperCase().contains('TARE') || key.toUpperCase().contains('NET')) {
+            RegExp numReg = RegExp(r'(\d+)');
+            Match? match = numReg.firstMatch(value);
+            if (match!= null) return match.group(1)!;
           }
+          return value;
         }
       }
     }
-    return 'N/A';
   }
-  // ==== OCR FIX SESH ====
+  return 'N/A';
+}
+// ==== FIX SESH ====
+    
+    
 
   Future<String?> _createExcel(Map<String, String> d) async {
     try {
