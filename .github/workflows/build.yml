@@ -44,6 +44,11 @@ jobs:
           </manifest>
           EOF
 
+      # Ei step tai Duplicate class error thik korbe
+      - name: Fix Kotlin Duplicate Class Error
+        run: |
+          sed -i '/android {/a \    configurations.all {\n        resolutionStrategy {\n            force "org.jetbrains.kotlin:kotlin-stdlib:1.8.10"\n        }\n    }' android/app/build.gradle
+
       - run: flutter pub get
       - run: flutter build apk --release
 
